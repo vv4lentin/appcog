@@ -1,7 +1,6 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
-import json
-import os
 
 class ApplicationSelect(discord.ui.Select):
     def __init__(self, cog):
@@ -12,18 +11,18 @@ class ApplicationSelect(discord.ui.Select):
         super().__init__(placeholder="Select an application...", options=options, min_values=1, max_values=1)
 
     async def callback(self, interaction: discord.Interaction):
-        await self.cog.apply(interaction)
+        await self.cog.apply(interaction)  # Calls the apply command when an option is selected
+
 
 class ApplicationMenu(discord.ui.View):
     def __init__(self, cog):
         super().__init__(timeout=None)
         self.add_item(ApplicationSelect(cog))
 
+
 class Applications(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.response_channel_id = None
-        self.load_data()
 
         # ==== APPLICATION CONFIGURATION ====
         self.applications = {
@@ -36,7 +35,7 @@ class Applications(commands.Cog):
                 "Explain what is LTAP and the punishment for it.",
                 "Explain what is NITRP and the punishment for it.",
                 "Explain what is Tool Abuse and the punishment for it.",
-                "Do you understand that you have to go through a training when your application gets accepted?",
+                "Do you understand that you have to go through training when your application gets accepted?",
                 "Do you understand that requesting a role will result in termination?",
                 "Do you understand that you will be required to use SPaG?",
                 "What is your timezone and do you have any questions?",
@@ -44,20 +43,9 @@ class Applications(commands.Cog):
         }
         # =====================================
 
-    def load_data(self):
-        """Load data from the JSON file"""
-        if os.path.exists("applications.json"):
-            with open("applications.json", "r") as f:
-                self.data = json.load(f)
-        else:
-            self.data = {}
+        self.response_channel_id = 1352595235976380508  # Store the channel ID for application responses
 
-    def save_data(self):
-        """Save data to the JSON file"""
-        with open("applications.json", "w") as f:
-            json.dump(self.data, f, indent=4)
-
-    @commands.command(name="app_panel", description="Show available application")
+    @app_commands.command(name="app_panel", description="Show available application")
     async def app_panel(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="Apply for a Position",
@@ -66,12 +54,11 @@ class Applications(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, view=ApplicationMenu(self))
 
-    @commands.command(name="set_app_channel", description="Set the channel for application responses (Admin only)")
-    @commands.has_permissions(administrator=True)
+    @app_commands.command(name="set_app_channel", description="Set the channel for application responses (Admin only)")
+    @app_commands.default_permissions(administrator=True)
     async def set_app_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         self.response_channel_id = channel.id
-        self.save_data()
-        await interaction.response.send_message(f"Application responses will be sent to {channel.mention}.")
+        await interaction.response.send_message(f"Application responses will be sent to {channel.mention}.", ephemeral=True)
 
     async def apply(self, interaction: discord.Interaction):
         app_name = "In-Game Moderator Application"
@@ -92,7 +79,7 @@ class Applications(commands.Cog):
                 await user.send(f"**{question}**")
                 msg = await self.bot.wait_for("message", check=check, timeout=120)
                 answers.append(msg.content)
-
+            
             # Format the response and send it to the chosen channel
             channel = self.bot.get_channel(self.response_channel_id)
             if not channel:
@@ -102,7 +89,7 @@ class Applications(commands.Cog):
             embed = discord.Embed(title=f"New Application: {app_name}", color=discord.Color.green())
             embed.add_field(name="User", value=user.mention, inline=False)
             for i, (q, a) in enumerate(zip(questions, answers), start=1):
-                embed.add_field(name=f"Q{i}: {q}", value=a, inline=False)
+                embed.add_field(name=f"Q{i}", value=f"{q}\n**Answer**: {a}", inline=False)
 
             accept_button = discord.ui.Button(label="Accept", style=discord.ButtonStyle.success)
             deny_button = discord.ui.Button(label="Deny", style=discord.ButtonStyle.danger)
