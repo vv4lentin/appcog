@@ -31,13 +31,13 @@ class Applications(commands.Cog):
                 "Explain what is LTAP and the punishment for it.",
                 "Explain what is NITRP and the punishment for it.",
                 "Explain what is Tool Abuse and the punishment for it.",
-                "Do you understand that you have to go through training when your application gets accepted?",
-                "Do you understand that requesting a role will result in termination?",
+                "Do you understand that you have to go through a training when your application gets accepted?",
+                "Do you understand that requesting a role will result in a termination?",
                 "Do you understand that you will be required to use SPaG?",
                 "What is your timezone and do you have any questions?",
             ]
         }
-        self.response_channel_id = None  # Channel for application responses
+        self.response_channel_id = 1352595235976380508
 
     @app_commands.command(name="app_panel", description="Show available application")
     async def app_panel(self, interaction: discord.Interaction):
@@ -52,7 +52,7 @@ class Applications(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def set_app_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         self.response_channel_id = channel.id
-        await interaction.response.send_message(f"Application responses will be sent to {channel.mention}.")
+        await interaction.response.send_message(f"Application responses will be sent to {channel.mention}.", ephemeral=True)
 
     async def apply(self, interaction: discord.Interaction):
         app_name = "In-Game Moderator Application"
@@ -60,8 +60,8 @@ class Applications(commands.Cog):
         user = interaction.user
         answers = []
 
-        if self.response_channel_id is None:
-            await interaction.response.send_message("Application response channel is not set.", ephemeral=True)
+        if not self.response_channel_id:
+            await interaction.response.send_message("Application response channel is not set.")
             return
 
         def check(m):
@@ -84,11 +84,37 @@ class Applications(commands.Cog):
             for i, (q, a) in enumerate(zip(questions, answers), start=1):
                 embed.add_field(name=f"Q{i}: {q}", value=a, inline=False)
 
-            await channel.send(embed=embed)
+            view = ApplicationResponseView(user, self)
+            await channel.send(embed=embed, view=view)
             await user.send("Your application has been submitted successfully!")
-        
         except Exception:
             await user.send("Application process cancelled or an error occurred.")
+
+class ApplicationResponseView(discord.ui.View):
+    def __init__(self, applicant: discord.User, cog):
+        super().__init__()
+        self.applicant = applicant
+        self.cog = cog
+
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success)
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_response(interaction, "Accepted")
+
+    @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_response(interaction, "Denied")
+
+    async def handle_response(self, interaction: discord.Interaction, status: str):
+        reason = "No reason provided."
+        embed = discord.Embed(title=f"Application {status}", color=discord.Color.green() if status == "Accepted" else discord.Color.red())
+        embed.add_field(name="User", value=self.applicant.mention)
+        embed.add_field(name="Status", value=status)
+        embed.add_field(name="Reason", value=reason)
+        admin_channel = self.cog.bot.get_channel(self.cog.response_channel_id)
+        if admin_channel:
+            await admin_channel.send(embed=embed)
+        await self.applicant.send(f"Your application has been {status}.")
+        await interaction.response.send_message(f"Application {status}.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Applications(bot))
