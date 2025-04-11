@@ -11,20 +11,16 @@ class ApplicationSelect(discord.ui.Select):
         super().__init__(placeholder="Select an application...", options=options, min_values=1, max_values=1)
 
     async def callback(self, interaction: discord.Interaction):
-        await self.cog.apply(interaction)  # Calls the apply command when an option is selected
-
+        await self.cog.apply(interaction)
 
 class ApplicationMenu(discord.ui.View):
     def __init__(self, cog):
         super().__init__(timeout=None)
         self.add_item(ApplicationSelect(cog))
 
-
 class Applications(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-        # ==== APPLICATION CONFIGURATION ====
         self.applications = {
             "In-Game Moderator Application": [
                 "What is your discord username?",
@@ -41,9 +37,7 @@ class Applications(commands.Cog):
                 "What is your timezone and do you have any questions?",
             ]
         }
-        # ====================================
-
-        self.response_channel_id = 1352595235976380508  # Stores the channel ID for application responses
+        self.response_channel_id = 1352595235976380508
 
     @app_commands.command(name="app_panel", description="Show available application")
     async def app_panel(self, interaction: discord.Interaction):
@@ -76,12 +70,10 @@ class Applications(commands.Cog):
         try:
             await user.send(f"Starting your application for '{app_name}'. Please answer the following questions.")
             for question in questions:
-                embed = discord.Embed(title="Application Question", description=question, color=discord.Color.blue())
-                await user.send(embed=embed)
+                await user.send(f"**{question}**")
                 msg = await self.bot.wait_for("message", check=check, timeout=120)
                 answers.append(msg.content)
             
-            # Format the response and send it to the chosen channel
             channel = self.bot.get_channel(self.response_channel_id)
             if not channel:
                 await user.send("Application response channel not found.")
@@ -89,22 +81,22 @@ class Applications(commands.Cog):
 
             embed = discord.Embed(title=f"New Application: {app_name}", color=discord.Color.green())
             embed.add_field(name="User", value=user.mention, inline=False)
-            for i, (q, a) in enumerate(zip(questions, answers), start=1):
-                embed.add_field(name=f"Q{i}: {q}", value=a, inline=False)
+            for q, a in zip(questions, answers):
+                embed.add_field(name="​", value=f"**Q:** {q}\n**A:** {a}", inline=False)
 
+            view = discord.ui.View()
             accept_button = discord.ui.Button(label="Accept", style=discord.ButtonStyle.success)
             deny_button = discord.ui.Button(label="Deny", style=discord.ButtonStyle.danger)
 
             async def accept_callback(interaction: discord.Interaction):
-                await self.send_modal(interaction, "Accepted", user)
+                await self.send_decision_modal(interaction, "Accepted")
 
             async def deny_callback(interaction: discord.Interaction):
-                await self.send_modal(interaction, "Denied", user)
+                await self.send_decision_modal(interaction, "Denied")
 
             accept_button.callback = accept_callback
             deny_button.callback = deny_callback
 
-            view = discord.ui.View()
             view.add_item(accept_button)
             view.add_item(deny_button)
 
@@ -114,20 +106,23 @@ class Applications(commands.Cog):
         except Exception:
             await user.send("Application process cancelled or an error occurred.")
 
-    async def send_modal(self, interaction: discord.Interaction, status: str, user: discord.User):
+    async def send_decision_modal(self, interaction: discord.Interaction, status: str):
         class DecisionModal(discord.ui.Modal, title=f"{status} Application"):
-            reason_input = discord.ui.TextInput(label="Reason for decision", style=discord.TextStyle.paragraph, placeholder="Enter the reason...", required=True)
+            reason = discord.ui.TextInput(label="Reason for decision", style=discord.TextStyle.paragraph, placeholder="Enter the reason...")
 
             async def on_submit(self, interaction: discord.Interaction):
-                reason = self.reason_input.value
+                reason = self.reason.value
+                user = interaction.user
                 await user.send(f"Your application has been {status}.")
-                await user.send(embed=discord.Embed(title=f"Decision: {status}", description=f"**Reason:** {reason}", color=discord.Color.green() if status == "Accepted" else discord.Color.red()))
-                admin_channel = self.bot.get_channel(self.cog.response_channel_id)
+                await user.send(f"**Reason:** {reason}")
+                
+                embed = discord.Embed(title=f"Application {status}", color=discord.Color.green() if status == "Accepted" else discord.Color.red())
+                embed.add_field(name="User", value=user.mention, inline=False)
+                embed.add_field(name="Reason", value=reason, inline=False)
+                admin_channel = self.bot.get_channel(self.response_channel_id)
                 if admin_channel:
-                    embed = discord.Embed(title=f"Application {status}", color=discord.Color.green() if status == "Accepted" else discord.Color.red())
-                    embed.add_field(name="User", value=user.mention)
-                    embed.add_field(name="Reason", value=reason)
                     await admin_channel.send(embed=embed)
+                await interaction.response.defer()
 
         await interaction.response.send_modal(DecisionModal())
 
