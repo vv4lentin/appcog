@@ -47,8 +47,13 @@ class Applications(commands.Cog):
 
     @app_commands.command(name="app_panel", description="Show available application")
     async def app_panel(self, interaction: discord.Interaction):
-        embed = discord.Embed(title="Apply for a Position", description="Select an application from the menu below.", color=discord.Color.blue())
-        await interaction.response.send_message(embed=embed, view=ApplicationMenu(self), ephemeral=True)
+        embed = discord.Embed(
+            title="Apply for a Position",
+            description="Select an application from the menu below.",
+            color=discord.Color.blue()
+    )
+    await interaction.response.send_message(embed=embed, view=ApplicationMenu(self))
+
 
     @app_commands.command(name="set_app_channel", description="Set the channel for application responses (Admin only)")
     @app_commands.default_permissions(administrator=True)
