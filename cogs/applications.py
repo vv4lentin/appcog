@@ -1,4 +1,4 @@
-import discord
+import discord 
 from discord import app_commands
 from discord.ext import commands
 
@@ -11,7 +11,7 @@ class ApplicationSelect(discord.ui.Select):
         super().__init__(placeholder="Select an application...", options=options, min_values=1, max_values=1)
 
     async def callback(self, interaction: discord.Interaction):
-        await self.cog.apply(interaction)  # Calls the apply command when an option is selected
+        await self.cog.apply(interaction)
 
 
 class ApplicationMenu(discord.ui.View):
@@ -23,8 +23,6 @@ class ApplicationMenu(discord.ui.View):
 class Applications(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-        # ==== APPLICATION CONFIGURATION ====
         self.applications = {
             "In-Game Moderator Application": [
                 "What is your discord username?",
@@ -41,9 +39,8 @@ class Applications(commands.Cog):
                 "What is your timezone and do you have any questions?",
             ]
         }
-        # =====================================
-
-        self.response_channel_id = 1352595235976380508  # Store the channel ID for application responses
+        self.response_channel_id = None
+        self.accept_role_id = None  # Store the role ID for accepted applications
 
     @app_commands.command(name="app_panel", description="Show available application")
     async def app_panel(self, interaction: discord.Interaction):
@@ -59,6 +56,12 @@ class Applications(commands.Cog):
     async def set_app_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         self.response_channel_id = channel.id
         await interaction.response.send_message(f"Application responses will be sent to {channel.mention}.", ephemeral=True)
+
+    @app_commands.command(name="app_accept_role", description="Set the role given when an application is accepted")
+    @app_commands.default_permissions(administrator=True)
+    async def app_accept_role(self, interaction: discord.Interaction, role: discord.Role):
+        self.accept_role_id = role.id
+        await interaction.response.send_message(f"Accepted applicants will now receive the {role.mention} role.", ephemeral=True)
 
     async def apply(self, interaction: discord.Interaction):
         app_name = "In-Game Moderator Application"
@@ -80,7 +83,6 @@ class Applications(commands.Cog):
                 msg = await self.bot.wait_for("message", check=check, timeout=120)
                 answers.append(msg.content)
             
-            # Format the response and send it to the chosen channel
             channel = self.bot.get_channel(self.response_channel_id)
             if not channel:
                 await user.send("Application response channel not found.")
@@ -95,10 +97,10 @@ class Applications(commands.Cog):
             deny_button = discord.ui.Button(label="Deny", style=discord.ButtonStyle.danger)
 
             async def accept_callback(interaction: discord.Interaction):
-                await self.send_modal(interaction, "Accepted")
+                await self.process_decision(interaction, user, "Accepted")
 
             async def deny_callback(interaction: discord.Interaction):
-                await self.send_modal(interaction, "Denied")
+                await self.process_decision(interaction, user, "Denied")
 
             accept_button.callback = accept_callback
             deny_button.callback = deny_callback
@@ -108,32 +110,46 @@ class Applications(commands.Cog):
             view.add_item(deny_button)
 
             await channel.send(embed=embed, view=view)
-            await user.send("Your application has been submitted successfully!")
+            await user.send("Your application has been submitted successfully! Please wait a few hours.")
 
         except Exception:
             await user.send("Application process cancelled or an error occurred.")
 
-    async def send_modal(self, interaction: discord.Interaction, status: str):
+    async def process_decision(self, interaction: discord.Interaction, user: discord.Member, status: str):
         modal = discord.ui.Modal(title=f"{status} Application", custom_id=f"{status.lower()}_modal")
         reason_input = discord.ui.TextInput(label="Reason for decision", style=discord.TextStyle.paragraph, placeholder="Enter the reason...", required=True)
         modal.add_item(reason_input)
 
         async def on_submit(interaction: discord.Interaction):
             reason = reason_input.value
-            user = interaction.user
-            # Send the reason to the user and log the decision
-            await user.send(f"Your application has been {status}.\nReason: {reason}")
 
-            # Log the decision in the admin channel
             embed = discord.Embed(title=f"Application {status}", color=discord.Color.green() if status == "Accepted" else discord.Color.red())
             embed.add_field(name="User", value=user.mention)
             embed.add_field(name="Reason", value=reason)
+
             admin_channel = self.bot.get_channel(self.response_channel_id)
             if admin_channel:
                 await admin_channel.send(embed=embed)
 
+            # Send a DM to the applicant
+            try:
+                await user.send(f"Your application has been **{status}**.\n**Reason**: {reason}")
+            except discord.Forbidden:
+                pass  # The user has DMs disabled
+
+            # Assign the role if accepted and a role is set
+            if status == "Accepted" and self.accept_role_id:
+                guild = interaction.guild
+                role = guild.get_role(self.accept_role_id)
+                if role:
+                    await user.add_roles(role)
+                    await interaction.response.send_message(f"{user.mention} has been accepted and given the {role.mention} role.", ephemeral=True)
+                else:
+                    await interaction.response.send_message("The role set for accepted applicants was not found.", ephemeral=True)
+
         modal.on_submit = on_submit
         await interaction.response.send_modal(modal)
+
 
 async def setup(bot):
     await bot.add_cog(Applications(bot))
