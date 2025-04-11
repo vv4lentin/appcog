@@ -20,6 +20,36 @@ class ApplicationMenu(discord.ui.View):
         self.add_item(ApplicationSelect(cog))
 
 
+class ApplicationDecisionModal(discord.ui.Modal):
+    def __init__(self, status, response_channel):
+        super().__init__(title=f"{status} Application")
+        self.status = status
+        self.response_channel = response_channel
+        self.reason_input = discord.ui.TextInput(
+            label="Reason for decision",
+            style=discord.TextStyle.paragraph,
+            placeholder="Enter the reason...",
+            required=True
+        )
+        self.add_item(self.reason_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        reason = self.reason_input.value
+        user = interaction.user
+
+        await user.send(f"Your application has been {self.status}.\nReason: {reason}")
+
+        embed = discord.Embed(
+            title=f"Application {self.status}",
+            color=discord.Color.green() if self.status == "Accepted" else discord.Color.red()
+        )
+        embed.add_field(name="User", value=user.mention)
+        embed.add_field(name="Reason", value=reason)
+
+        if self.response_channel:
+            await self.response_channel.send(embed=embed)
+
+
 class Applications(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -35,8 +65,8 @@ class Applications(commands.Cog):
                 "Explain what is LTAP and the punishment for it.",
                 "Explain what is NITRP and the punishment for it.",
                 "Explain what is Tool Abuse and the punishment for it.",
-                "Do you understand that you have to go trough a training when your application gets accepted?",
-                "Do you understand that requesting a role will result to a termination?",
+                "Do you understand that you have to go through a training when your application gets accepted?",
+                "Do you understand that requesting a role will result in a termination?",
                 "Do you understand that you will be required to use SPaG?",
                 "What is your timezone and do you have any questions?",
             ]
@@ -51,9 +81,8 @@ class Applications(commands.Cog):
             title="Apply for a Position",
             description="Select an application from the menu below.",
             color=discord.Color.blue()
-    )
-    await interaction.response.send_message(embed=embed, view=ApplicationMenu(self))
-
+        )
+        await interaction.response.send_message(embed=embed, view=ApplicationMenu(self))
 
     @app_commands.command(name="set_app_channel", description="Set the channel for application responses (Admin only)")
     @app_commands.default_permissions(administrator=True)
@@ -67,7 +96,8 @@ class Applications(commands.Cog):
         user = interaction.user
         answers = []
 
-        if not self.response_channel_id:
+        channel = self.bot.get_channel(self.response_channel_id)
+        if channel is None:
             await interaction.response.send_message("Application response channel is not set.")
             return
 
@@ -81,25 +111,19 @@ class Applications(commands.Cog):
                 msg = await self.bot.wait_for("message", check=check, timeout=120)
                 answers.append(msg.content)
             
-            # Format the response and send it to the chosen channel
-            channel = self.bot.get_channel(self.response_channel_id)
-            if not channel:
-                await user.send("Application response channel not found.")
-                return
-
             embed = discord.Embed(title=f"New Application: {app_name}", color=discord.Color.green())
             embed.add_field(name="User", value=user.mention, inline=False)
             for i, (q, a) in enumerate(zip(questions, answers), start=1):
                 embed.add_field(name=f"Q{i}: {q}", value=a, inline=False)
-
+            
             accept_button = discord.ui.Button(label="Accept", style=discord.ButtonStyle.success)
             deny_button = discord.ui.Button(label="Deny", style=discord.ButtonStyle.danger)
 
             async def accept_callback(interaction: discord.Interaction):
-                await self.send_modal(interaction, "Accepted")
+                await interaction.response.send_modal(ApplicationDecisionModal("Accepted", channel))
 
             async def deny_callback(interaction: discord.Interaction):
-                await self.send_modal(interaction, "Denied")
+                await interaction.response.send_modal(ApplicationDecisionModal("Denied", channel))
 
             accept_button.callback = accept_callback
             deny_button.callback = deny_callback
@@ -114,27 +138,5 @@ class Applications(commands.Cog):
         except Exception:
             await user.send("Application process cancelled or an error occurred.")
 
-    async def send_modal(self, interaction: discord.Interaction, status: str):
-        modal = discord.ui.Modal(title=f"{status} Application", custom_id=f"{status.lower()}_modal")
-        reason_input = discord.ui.TextInput(label="Reason for decision", style=discord.TextStyle.paragraph, placeholder="Enter the reason...", required=True)
-        modal.add_item(reason_input)
-
-        async def on_submit(interaction: discord.Interaction):
-            reason = reason_input.value
-            user = interaction.user
-            # Send the reason to the user and log the decision
-            await user.send(f"Your application has been {status}.\nReason: {reason}")
-
-            # Log the decision in the admin channel
-            embed = discord.Embed(title=f"Application {status}", color=discord.Color.green() if status == "Accepted" else discord.Color.red())
-            embed.add_field(name="User", value=user.mention)
-            embed.add_field(name="Reason", value=reason)
-            admin_channel = self.bot.get_channel(self.response_channel_id)
-            if admin_channel:
-                await admin_channel.send(embed=embed)
-
-        modal.on_submit = on_submit
-        await interaction.response.send_modal(modal)
-
 async def setup(bot):
-    await bot.add_cog(Applications(bot))
+    bot.add_cog(Applications(bot))
