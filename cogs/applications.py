@@ -40,7 +40,7 @@ class Applications(commands.Cog):
             ]
         }
         self.response_channel_id = None
-        self.accept_role_id = None  # Store the role ID for accepted applications
+        self.accept_role_id = None
 
     @app_commands.command(name="app_panel", description="Show available application")
     async def app_panel(self, interaction: discord.Interaction):
@@ -62,6 +62,19 @@ class Applications(commands.Cog):
     async def app_accept_role(self, interaction: discord.Interaction, role: discord.Role):
         self.accept_role_id = role.id
         await interaction.response.send_message(f"Accepted applicants will now receive the {role.mention} role.", ephemeral=True)
+
+    @app_commands.command(name="mark_for_review", description="Flag a user's application for shadow review (Admin only)")
+    @app_commands.default_permissions(administrator=True)
+    async def mark_for_review(self, interaction: discord.Interaction, user: discord.User, reason: str):
+        embed = discord.Embed(
+            title="🔍 Application Marked for Shadow Review",
+            color=discord.Color.orange(),
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="👤 User", value=user.mention, inline=False)
+        embed.add_field(name="📌 Reason", value=reason, inline=False)
+        embed.add_field(name="🛡️ Flagged by", value=interaction.user.mention, inline=False)
+        await interaction.response.send_message(embed=embed)
 
     async def apply(self, interaction: discord.Interaction):
         app_name = "In-Game Moderator Application"
@@ -131,13 +144,11 @@ class Applications(commands.Cog):
             if admin_channel:
                 await admin_channel.send(embed=embed)
 
-            # Send a DM to the applicant
             try:
                 await user.send(f"Your application has been **{status}**.\n**Reason**: {reason}")
             except discord.Forbidden:
-                pass  # The user has DMs disabled
+                pass
 
-            # Assign the role if accepted and a role is set
             if status == "Accepted" and self.accept_role_id:
                 guild = interaction.guild
                 role = guild.get_role(self.accept_role_id)
